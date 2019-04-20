@@ -14,12 +14,17 @@ ap.add_argument('excel', type=lambda filename: xlrd.open_workbook(expanduser(fil
 ap.add_argument('--repo_id', type=int, help="ID of the repository to create containers in", default=2)
 ap.add_argument('--logfile', help='Filename for log output')
 
+def cell_value(cell):
+    if str(cell).startswith('xldate'):
+        return xlrd.xldate.xldate_as_datetime(cell.value, args.excel.datemode).date().isoformat()
+    else:
+        return int(cell.value) if isinstance(cell.value, Number) else cell.value
+
 def dictify_sheet(sheet):
     rows = sheet.get_rows()
     rowmap = [cell.value for cell in next(rows)]
     for row in rows:
-        values = (int(cell.value) if isinstance(cell.value, Number) else cell.value for cell in row)
-        yield dict(zip(rowmap, values))
+        yield dict(zip(rowmap, map(cell_value, row)))
 
 def container_row_to_container(c_row):
     global c_types
@@ -27,24 +32,30 @@ def container_row_to_container(c_row):
 
 Expected fields are:
     TempContainerRecord
-    ContainerProfile
+    Container Profile
     Container Type
     Container Indicator
     Barcode
     Location
     Location Start Date"""
+
     locations = [JM.container_location(
         status="current",
-        ref={"ref": f'locations/{c_row["Location"]}'},
+        ref=f'/locations/{c_row["Location"]}',
         start_date=c_row['Location Start Date'])]
 
-    return JM.top_container(
+    tc = JM.top_container(
         indicator=str(c_row['Container Indicator']),
-        barcode=c_row['Barcode'] if c_row['Barcode'] else None,
         container_locations=locations,
         type=c_types[c_row['Container Type']],
-        container_profile={'ref': f'container_profiles/{c_row["Container Profile"]}'}
     )
+    if c_row['Barcode']:
+        tc['barcode'] = c_row['Barcode']
+    if c_row['Container Profile']:
+        tc['container_profile'] = JM.container_profile(
+            ref=f'/container_profiles/{c_row["Container Profile"]}' if c_row["Container Profile"] else None)
+
+    return tc
 
 
 if __name__ == '__main__':
