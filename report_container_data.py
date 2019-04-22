@@ -21,7 +21,7 @@ if __name__ == '__main__':
             counts[e['event']] += 1
 
         print(f"Containers Created: {counts['create_container']}")
-        print(f"AOs successfully updated: {counts['uodate_ao']}")
+        print(f"AOs successfully updated: {counts['update_ao']}")
         print("\n\n")
 
         print(f"Containers that failed validation: {counts['FAILED validate_container_row']}")

@@ -36,8 +36,8 @@ Columns for sheet 1 (names must match exactly):
 | Object Record ID          | database id for Archival Object              | Y             |
 | Instance Type             | database id for instance type                | Y             |
 | TempContainerRecord       | temporary top container record (see sheet 2) | Y             |
-| Child Container Type      | database id for container type               | Y             |
-| Child Container Indicator | indicator for child container                | Y             |
+| Child Container Type      | database id for container type               | N             |
+| Child Container Indicator | indicator for child container                | N             |
 
 Columns for sheet 2 (names must match exactly):
 

@@ -81,7 +81,7 @@ Expected fields are:
 
 def validate_sub_container_row(sc_row):
     '''Checks if rows required for instance and sub_container creation are empty'''
-    required = list(sc_row.keys()) # all fields are required
+    required = ['TempContainerRecord', 'Object Record ID', 'Instance Type']
     error_dict = defaultdict(list)
     for field in required:
         if not sc_row[field]:
@@ -112,12 +112,17 @@ Expected fields are:
     sub_container = JM.sub_container(
         top_container=JM.top_container(
             ref=f'/repositories/{args.repo_id}/top_containers/{container_id}'
-        ),
-        type_2=c_types[sc_row['Child Container Type']],
-        indicator_2=str(sc_row['Child Container Indicator']))
+        ))
+
+    if sc_row['Child Container Type']:
+        sub_container['type_2'] = c_types[sc_row['Child Container Type']]
+    if sc_row['Child Container Indicator']:
+        sub_container['indicator_2'] = str(sc_row['Child Container Indicator'])
+
     instance = JM.instance(
-        sub_container = sub_container,
-        instance_type=i_types[sc_row['Instance Type']])
+        instance_type=i_types[sc_row['Instance Type']],
+        sub_container=sub_container
+    )
 
     return instance
 
