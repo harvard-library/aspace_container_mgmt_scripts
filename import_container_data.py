@@ -4,15 +4,23 @@ import xlrd
 from os.path import expanduser
 from argparse import ArgumentParser
 from numbers import Number
+from collections import defaultdict
 
 from asnake.logging import setup_logging, get_logger
 from asnake.aspace import ASpace
 from asnake.jsonmodel import JM
 
 ap = ArgumentParser(description='Import ASpace container data from spreadsheets')
-ap.add_argument('excel', type=lambda filename: xlrd.open_workbook(expanduser(filename)), help='Excel file of container info')
-ap.add_argument('--repo_id', type=int, help="ID of the repository to create containers in", default=2)
-ap.add_argument('--logfile', help='Filename for log output')
+ap.add_argument('excel',
+                type=lambda filename: xlrd.open_workbook(expanduser(filename)),
+                help='Excel file of container info')
+ap.add_argument('--repo_id',
+                type=int,
+                default=2,
+                help="ID of the repository to create containers in")
+ap.add_argument('--logfile',
+                default='import_container_data.log'
+                help='Filename for log output')
 
 def cell_value(cell):
     if str(cell).startswith('xldate'):
@@ -25,6 +33,21 @@ def dictify_sheet(sheet):
     rowmap = [cell.value for cell in next(rows)]
     for row in rows:
         yield dict(zip(rowmap, map(cell_value, row)))
+
+def validate_container_row(c_row):
+    '''Checks if rows required for container creation are empty'''
+    required = ['TempContainerRecord', 'Container Type', 'Container Indicator', 'Location', 'Location Start Date']
+    error_dict = defaultdict(list)
+    for field in required:
+        if not c_row[field]:
+            error_dict['temp_id'] = c_row['TempContainerRecord']
+            error_dict['empty_fields'].append(field)
+    if len(error_dict):
+        log.error('FAILED validate_container', **error_dict)
+        return False
+    else:
+        return True
+
 
 def container_row_to_container(c_row):
     global c_types
@@ -60,7 +83,7 @@ Expected fields are:
 
 if __name__ == '__main__':
     args = ap.parse_args()
-    setup_logging(filename=args.logfile or 'import_container_data.log')
+    setup_logging(filename=args.logfile)
     log = get_logger('import_container_data')
 
     aspace = ASpace()
