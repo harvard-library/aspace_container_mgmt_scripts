@@ -182,6 +182,6 @@ if __name__ == '__main__':
             if res.status_code == 200:
                 log.info('update_ao', ao_id=ao_id, instances_added=instances_added)
             else:
-                log.error('FAILED update_ao', result=res.json(), ao_id=ao_id)
+                log.error('FAILED update_ao', result=res.json(), ao=ao_json, ao_id=ao_id)
 
     log.info('end_ingest')
