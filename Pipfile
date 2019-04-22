@@ -10,5 +10,3 @@ xlrd="*"
 jupyter="*"
 ArchivesSnake="*"
 
-[requires]
-python_version = "3.7"
