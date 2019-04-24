@@ -27,7 +27,8 @@ if __name__ == '__main__':
         print(f"Containers that failed validation: {counts['FAILED validate_container_row']}")
         for e in events:
             if e['event'] == 'FAILED validate_container_row':
-                print(f"\ttemp_id={e['temp_id']} had empty fields: {e['empty_fields']}")
+                field_issues = ", and ".join((f"{k.replace('_', ' ')}: {v}" for k,v in e.items() if k.endswith('fields')))
+                print(f"\ttemp_id={e['temp_id']} had {field_issues}")
         print("\n\n")
 
         print(f"Containers passed validation but couldn't be created: {counts['FAILED create_container']}")
@@ -46,3 +47,8 @@ if __name__ == '__main__':
         for e in events:
             if e['event'] == 'OMITTED validate_sub_container_row':
                 print(f"\tao_id={e['ao_id']} temp_id={e['temp_id']} omitted")
+
+        print(f"Instances that failed to update for some other reason: {counts['FAILED update_ao']}")
+        for e in events:
+            if e['event'] == 'FAILED update_ao':
+                print(f"\tao_id={e['ao_id']} result={e['result']}")

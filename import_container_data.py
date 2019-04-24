@@ -35,14 +35,27 @@ def dictify_sheet(sheet):
     for row in rows:
         yield dict(zip(rowmap, map(cell_value, row)))
 
+unique_field_counters = defaultdict(Counter)
+def _check_unique_field(field, c_row, error_dict):
+    if c_row[field]:
+        unique_field_counters[field][c_row[field]] += 1
+        if unique_field_counters[field][c_row[field]] > 1:
+            error_dict['temp_id'] = c_row['TempContainerRecord']
+            error_dict['duplicate_fields'].append(field)
+
 def validate_container_row(c_row):
     '''Checks if rows required for container creation are empty'''
     required = ['TempContainerRecord', 'Container Type', 'Container Indicator', 'Location', 'Location Start Date']
+    unique = ['TempContainerRecord', 'Barcode']
     error_dict = defaultdict(list)
     for field in required:
         if not c_row[field]:
             error_dict['temp_id'] = c_row['TempContainerRecord']
             error_dict['empty_fields'].append(field)
+
+    for field in unique:
+        _check_unique_field(field, c_row, error_dict)
+
     if len(error_dict):
         log.error('FAILED validate_container_row', **error_dict)
         return False
@@ -175,6 +188,9 @@ if __name__ == '__main__':
         instances_added = []
         for sc_row in ao_group:
             temp_id = sc_row['TempContainerRecord']
+            if not temp_id in temp_id2id:
+                log.error('FAILED update_ao', result=f"'{temp_id}' not present in temp_id2id", ao=ao_json, ao_id=ao_id)
+                continue
             if validate_sub_container_row(sc_row):
                 if not 'instances' in ao_json:
                     ao_json['instances'] = []
