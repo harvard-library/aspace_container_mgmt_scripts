@@ -4,8 +4,10 @@ import xlrd
 from os.path import expanduser
 from argparse import ArgumentParser
 from numbers import Number
-from collections import defaultdict
+from collections import defaultdict, Counter
 from itertools import groupby
+from more_itertools import chunked
+from time import sleep
 
 from asnake.logging import setup_logging, get_logger
 from asnake.aspace import ASpace
@@ -162,10 +164,11 @@ if __name__ == '__main__':
 
     # containers
     for c_row in dictify_sheet(args.excel.sheet_by_index(1)):
+        temp_id = c_row['TempContainerRecord']
         if validate_container_row(c_row):
-            temp_id = c_row['TempContainerRecord']
             res = aspace.client.post(f'repositories/{args.repo_id}/top_containers',
                                      json=container_row_to_container(c_row))
+
             if res.status_code == 200:
                 temp_id2id[temp_id] = res.json()["id"]
                 log.info('create_container', id=res.json()["id"], temp_id=temp_id)
@@ -178,28 +181,41 @@ if __name__ == '__main__':
                 failures.add(temp_id)
 
     # sub_containers
+    sorting_fn=lambda x: x['Object Record ID']
     rows = dictify_sheet(args.excel.sheet_by_index(0))
 
-    sorting_fn=lambda x: x['Object Record ID']
-    groups_by_ao =  groupby(sorted(dictify_sheet(xlrd.open_workbook('art_museum/HAM_ArchivalObjects_ReadyForIngest.xlsx').sheet_by_index(0)), key=sorting_fn), key=sorting_fn)
-    for ao_id, ao_group in groups_by_ao:
-        ao_json = aspace.repositories(args.repo_id).archival_objects(ao_id).json()
-        initial_instance_count = len(ao_json.get('instances', []))
-        instances_added = []
-        for sc_row in ao_group:
-            temp_id = sc_row['TempContainerRecord']
-            if not temp_id in temp_id2id:
-                log.error('FAILED update_ao', result=f"'{temp_id}' not present in temp_id2id", ao=ao_json, ao_id=ao_id)
-                continue
-            if validate_sub_container_row(sc_row):
-                if not 'instances' in ao_json:
-                    ao_json['instances'] = []
-                ao_json['instances'].append(sub_container_row_to_instance(sc_row))
-                instances_added.append({'temp_id': temp_id, 'container_id': temp_id2id[temp_id]})
+    groups_by_ao = {ao_id:list(group)
+                    for ao_id, group in groupby(sorted(rows, key=sorting_fn), key=sorting_fn)}
+
+    for group in chunked(groups_by_ao.items(), 100):
+        ao_ids = [item[0] for item in group]
+
+        res = aspace.client.get(f"repositories/{args.repo_id}/archival_objects",
+                                params={"id_set":ao_ids})
+        if res.status_code != 200:
+            raise RuntimeError(f"Something went wrong with batch of IDs: {ao_ids}")
+
+        ao_jsons = {int(ao['uri'].split('/')[-1]):ao for ao in res.json()}
+
+        for ao_id, ao_group in group:
+            instances_added = []
+            ao_json = ao_jsons[ao_id]
+            del ao_json['position']
+            initial_instance_count = len(ao_json.get('instances', []))
+            for sc_row in ao_group:
+                temp_id = sc_row['TempContainerRecord']
+                if not temp_id in temp_id2id:
+                    log.error('FAILED update_ao', result=f"'{temp_id}' not present in temp_id2id", ao=ao_json, ao_id=ao_id)
+                    continue
+                if validate_sub_container_row(sc_row):
+                    if not 'instances' in ao_json:
+                        ao_json['instances'] = []
+                    ao_json['instances'].append(sub_container_row_to_instance(sc_row))
+                    instances_added.append({'temp_id': temp_id, 'container_id': temp_id2id[temp_id]})
 
 
-        if len(ao_json.get('instances', [])) > initial_instance_count:
-            res = aspace.client.post(ao_json['uri'], json=ao_json)
+            if len(ao_json.get('instances', [])) > initial_instance_count:
+                res = aspace.client.post(ao_json['uri'], json=ao_json)
             if res.status_code == 200:
                 log.info('update_ao', ao_id=ao_id, instances_added=instances_added)
             else:

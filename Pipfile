@@ -9,4 +9,5 @@ verify_ssl = true
 xlrd="*"
 jupyter="*"
 ArchivesSnake="*"
+more_itertools="*"
 
