@@ -47,7 +47,7 @@ def _check_unique_field(field, c_row, error_dict):
 
 def validate_container_row(c_row):
     '''Checks if rows required for container creation are empty'''
-    required = ['TempContainerRecord', 'Container Type', 'Container Indicator', 'Location', 'Location Start Date']
+    required = ['TempContainerRecord', 'Container Type', 'Container Indicator']
     unique = ['TempContainerRecord', 'Barcode']
     error_dict = defaultdict(list)
     for field in required:
@@ -76,22 +76,22 @@ Expected fields are:
     Location
     Location Start Date"""
 
-    locations = [JM.container_location(
-        status="current",
-        ref=f'/locations/{c_row["Location"]}',
-        start_date=c_row['Location Start Date'])]
 
     tc = JM.top_container(
         indicator=str(c_row['Container Indicator']),
-        container_locations=locations,
-        type=c_types[c_row['Container Type']],
+        type=c_row['Container Type'],
     )
     if c_row['Barcode']:
         tc['barcode'] = c_row['Barcode']
     if c_row['Container Profile']:
         tc['container_profile'] = JM.container_profile(
             ref=f'/container_profiles/{c_row["Container Profile"]}' if c_row["Container Profile"] else None)
-
+    if c_row['Location']:
+        locations = [JM.container_location(
+            status="current",
+            ref=f'/locations/{c_row["Location"]}',
+            start_date=c_row['Location Start Date'])]
+        tc['container_locations'] = locations
     return tc
 
 def validate_sub_container_row(sc_row):
@@ -130,12 +130,12 @@ Expected fields are:
         ))
 
     if sc_row['Child Container Type']:
-        sub_container['type_2'] = c_types[sc_row['Child Container Type']]
+        sub_container['type_2'] = sc_row['Child Container Type']
     if sc_row['Child Container Indicator']:
         sub_container['indicator_2'] = str(sc_row['Child Container Indicator'])
 
     instance = JM.instance(
-        instance_type=i_types[sc_row['Instance Type']],
+        instance_type=sc_row['Instance Type'],
         sub_container=sub_container
     )
 
@@ -148,16 +148,6 @@ if __name__ == '__main__':
     log = get_logger('import_container_data')
     log.info('start_ingest')
     aspace = ASpace()
-
-    # mapping from id->value for container_type enum
-    c_types = {entry['id']:entry['value']
-               for entry
-               in aspace.config.enumerations.names("container_type").json()['enumeration_values']}
-
-    # mapping from id->value for instance_instance_type enum
-    i_types =  {entry['id']:entry['value']
-               for entry
-               in aspace.config.enumerations.names("instance_instance_type").json()['enumeration_values']}
 
     temp_id2id = {}
     failures = set()
