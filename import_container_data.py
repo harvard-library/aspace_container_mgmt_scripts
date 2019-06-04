@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
-import xlrd
+import openpyxl
+import datetime
 from os.path import expanduser
 from argparse import ArgumentParser
 from numbers import Number
@@ -15,7 +16,7 @@ from asnake.jsonmodel import JM
 
 ap = ArgumentParser(description='Import ASpace container data from spreadsheets')
 ap.add_argument('excel',
-                type=lambda filename: xlrd.open_workbook(expanduser(filename)),
+                type=lambda filename: openpyxl.load_workbook(expanduser(filename)),
                 help='Excel file of container info')
 ap.add_argument('--repo_id',
                 type=int,
@@ -25,17 +26,28 @@ ap.add_argument('--logfile',
                 default='import_container_data.log',
                 help='Filename for log output')
 
-def cell_value(cell):
-    if str(cell).startswith('xldate'):
-        return xlrd.xldate.xldate_as_datetime(cell.value, args.excel.datemode).date().isoformat()
+
+enforce_integer = {'Object Record ID', 'Location', 'Container Profile'}
+enforce_string = {'Barcode', 'Container Indicator', 'Child Container Indicator'} # unused currently while testing openpyxl
+def cell_value(cell, header):
+    if isinstance(cell.value, datetime.datetime):
+        return cell.value.date().isoformat()
+    elif header in enforce_integer:
+        return int(cell.value) if cell.value else ''
+    elif cell.value == None:
+        return ''
     else:
-        return int(cell.value) if isinstance(cell.value, Number) else cell.value
+        return str(cell.value)
 
 def dictify_sheet(sheet):
-    rows = sheet.get_rows()
+    rows = iter(sheet)
     rowmap = [cell.value.strip() for cell in next(rows)]
+
     for row in rows:
-        yield dict(zip(rowmap, map(cell_value, row)))
+        out = {}
+        for idx, header in enumerate(rowmap):
+            out[header] = cell_value(row[idx], header)
+        yield out
 
 unique_field_counters = defaultdict(Counter)
 def _check_unique_field(field, c_row, error_dict):
@@ -49,6 +61,7 @@ def validate_container_row(c_row):
     '''Checks if rows required for container creation are empty'''
     required = ['TempContainerRecord', 'Container Type', 'Container Indicator']
     unique = ['TempContainerRecord', 'Barcode']
+
     error_dict = defaultdict(list)
     for field in required:
         if not c_row[field]:
@@ -152,8 +165,9 @@ if __name__ == '__main__':
     temp_id2id = {}
     failures = set()
 
+    ao_sheet, container_sheet = args.excel
     # containers
-    for c_row in dictify_sheet(args.excel.sheet_by_index(1)):
+    for c_row in dictify_sheet(container_sheet):
         temp_id = c_row['TempContainerRecord']
         if validate_container_row(c_row):
             res = aspace.client.post(f'repositories/{args.repo_id}/top_containers',
@@ -172,7 +186,7 @@ if __name__ == '__main__':
 
     # sub_containers
     sorting_fn=lambda x: x['Object Record ID']
-    rows = dictify_sheet(args.excel.sheet_by_index(0))
+    rows = dictify_sheet(ao_sheet)
 
     groups_by_ao = {ao_id:list(group)
                     for ao_id, group in groupby(sorted(rows, key=sorting_fn), key=sorting_fn)}
