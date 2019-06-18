@@ -8,8 +8,9 @@ Scripts written to support the ASpace container management project at Harvard.
 
 - Python 3.6 or higher
 - [ArchivesSnake](https://github.com/archivesspace-labs/ArchivesSnake)
-- [xlrd](https://xlrd.readthedocs.io/en/latest/)
 - [Jupyter](https://jupyter.org/) (optional if you just want to run the script)
+- [more_itertools](https://github.com/erikrose/more-itertools)
+- [openpyxl](https://openpyxl.readthedocs.io/en/stable/)
 
 If you're using pipenv, you can install all of these by running
 

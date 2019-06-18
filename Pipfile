@@ -9,7 +9,4 @@ verify_ssl = true
 jupyter="*"
 ArchivesSnake="*"
 more_itertools="*"
-pymysql = "*"
 openpyxl = "*"
-xlrd = "*"
-ipdb = "*"
