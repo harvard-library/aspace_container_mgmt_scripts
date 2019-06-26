@@ -2,6 +2,8 @@
 
 import openpyxl
 import datetime
+import json
+
 from os.path import expanduser
 from argparse import ArgumentParser
 from numbers import Number
@@ -25,7 +27,9 @@ ap.add_argument('--repo_id',
 ap.add_argument('--logfile',
                 default='import_container_data.log',
                 help='Filename for log output')
-
+ap.add_argument('--skip_via_log',
+                default=False,
+                help='Filename of partial import logfile')
 
 enforce_integer = {'Object Record ID', 'Location', 'Container Profile'}
 enforce_string = {'Barcode', 'Container Indicator', 'Child Container Indicator'} # unused currently while testing openpyxl
@@ -41,7 +45,7 @@ def cell_value(cell, header):
 
 def dictify_sheet(sheet):
     rows = iter(sheet)
-    rowmap = [cell.value.strip() for cell in next(rows)]
+    rowmap = [cell.value.strip() for cell in next(rows) if cell.value]
 
     for row in rows:
         out = {}
@@ -154,6 +158,12 @@ Expected fields are:
 
     return instance
 
+def populate_skiplists(log_entries):
+    for entry in log_entries:
+        if entry['event'] == 'create_container':
+            temp_id2id[entry['temp_id']] = entry['id']
+        if entry['event'] == 'update_ao':
+            ao_processed.add(entry['ao_id'])
 
 if __name__ == '__main__':
     args = ap.parse_args()
@@ -162,13 +172,23 @@ if __name__ == '__main__':
     log.info('start_ingest')
     aspace = ASpace()
 
+    # Global variables referenced from local functions
     temp_id2id = {}
+    ao_processed = set()
     failures = set()
+
+    if args.skip_via_log:
+        with open(expanduser(args.skip_via_log)) as f:
+            populate_skiplists(map(json.loads, f))
 
     ao_sheet, container_sheet = args.excel
     # containers
     for c_row in dictify_sheet(container_sheet):
         temp_id = c_row['TempContainerRecord']
+        if temp_id in temp_id2id:
+            log.warning('skip_container', temp_id=temp_id, id=temp_id2id[temp_id])
+            continue
+
         if validate_container_row(c_row):
             res = aspace.client.post(f'repositories/{args.repo_id}/top_containers',
                                      json=container_row_to_container(c_row))
@@ -186,7 +206,12 @@ if __name__ == '__main__':
 
     # sub_containers
     sorting_fn=lambda x: x['Object Record ID']
-    rows = dictify_sheet(ao_sheet)
+
+    if ao_processed:
+        for ao_id in ao_processed:
+            log.warning('skip_ao', id=ao_id)
+
+    rows = filter(lambda row: row['Object Record ID'] not in ao_processed, dictify_sheet(ao_sheet))
 
     groups_by_ao = {ao_id:list(group)
                     for ao_id, group in groupby(sorted(rows, key=sorting_fn), key=sorting_fn)}
@@ -203,7 +228,10 @@ if __name__ == '__main__':
 
         for ao_id, ao_group in group:
             instances_added = []
-            ao_json = ao_jsons[ao_id]
+            ao_json = ao_jsons.get(ao_id, None)
+            if not ao_json:
+                log.error('FAILED missing_ao', result=None, ao_id=ao_id, ao_json=None)
+                continue
             del ao_json['position']
             initial_instance_count = len(ao_json.get('instances', []))
             for sc_row in ao_group:
