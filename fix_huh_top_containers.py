@@ -15,10 +15,6 @@ ap = ArgumentParser(description="Repoint Botany AOs to correct top containers")
 ap.add_argument('excel',
                 type=lambda filename: openpyxl.load_workbook(expanduser(filename)),
                 help='Excel file with fields: instance_id, ao_id, old_tc, new_tc')
-ap.add_argument('--repo_id',
-                    type=int,
-                    default=17,
-                    help='ID of the repository to fix containers in')
 ap.add_argument('--logfile',
                 default='fix_top_containers.log',
                 help='Filename for log output')
