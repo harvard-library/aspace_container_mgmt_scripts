@@ -160,10 +160,10 @@ Expected fields are:
 
 def populate_skiplists(log_entries):
     for entry in log_entries:
-        if entry['event'] == 'create_container':
+        if entry['event'] in {'create_container', 'skip_container'}:
             temp_id2id[entry['temp_id']] = entry['id']
-        if entry['event'] == 'update_ao':
-            ao_processed.add(entry['ao_id'])
+        if entry['event'] in {'update_ao', 'skip_ao'}:
+            ao_processed.add(entry.get('ao_id', entry.get('id', None))) # id was used in in early versions of script
 
 if __name__ == '__main__':
     args = ap.parse_args()
@@ -209,7 +209,7 @@ if __name__ == '__main__':
 
     if ao_processed:
         for ao_id in ao_processed:
-            log.warning('skip_ao', id=ao_id)
+            log.warning('skip_ao', ao_id=ao_id)
 
     rows = filter(lambda row: row['Object Record ID'] not in ao_processed, dictify_sheet(ao_sheet))
 
