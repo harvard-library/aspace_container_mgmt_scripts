@@ -41,7 +41,7 @@ def cell_value(cell, header):
     elif cell.value == None:
         return ''
     else:
-        return str(cell.value)
+        return str(cell.value).strip()
 
 def dictify_sheet(sheet):
     rows = iter(sheet)
