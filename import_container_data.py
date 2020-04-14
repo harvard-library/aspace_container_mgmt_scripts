@@ -51,7 +51,8 @@ def dictify_sheet(sheet):
         out = {}
         for idx, header in enumerate(rowmap):
             out[header] = cell_value(row[idx], header)
-        yield out
+        if any(out.values()): # skip blank rows
+            yield out
 
 unique_field_counters = defaultdict(Counter)
 def _check_unique_field(field, c_row, error_dict):
