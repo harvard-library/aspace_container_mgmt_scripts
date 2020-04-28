@@ -21,7 +21,7 @@ if __name__ == '__main__':
             counts[e['event']] += 1
 
         print(f"Containers Created: {counts['create_container']}")
-        print(f"AOs successfully updated: {counts['update_ao']}")
+        print(f"Recordss successfully updated: {counts['update_record']}")
         print("\n\n")
 
         print(f"Containers that failed validation: {counts['FAILED validate_container_row']}")
@@ -40,15 +40,15 @@ if __name__ == '__main__':
         print(f"Instances that failed validation: {counts['FAILED validate_sub_container_row']}")
         for e in events:
             if e['event'] == 'FAILED validate_sub_container_row':
-                print(f"\ttemp_id={e['temp_id']} and archival_object_id={e['ao_id']} had empty fields: {e['empty_fields']}")
+                print(f"\ttemp_id={e['temp_id']} and record={e['record_uri']} had empty fields: {e['empty_fields']}")
         print("\n\n")
 
         print(f"Instances that were omitted because of failed container creation: {counts['OMITTED validate_sub_container_row']}")
         for e in events:
             if e['event'] == 'OMITTED validate_sub_container_row':
-                print(f"\tao_id={e['ao_id']} temp_id={e['temp_id']} omitted")
+                print(f"\trecord_uri={e['record_uri']} temp_id={e['temp_id']} omitted")
 
-        print(f"Instances that failed to update for some other reason: {counts['FAILED update_ao']}")
+        print(f"Instances that failed to update for some other reason: {counts['FAILED update_record']}")
         for e in events:
-            if e['event'] == 'FAILED update_ao':
-                print(f"\tao_id={e['ao_id']} result={e['result']}")
+            if e['event'] == 'FAILED update_record':
+                print(f"\trecord_uri={e['record_uri']} result={e['result']}")
