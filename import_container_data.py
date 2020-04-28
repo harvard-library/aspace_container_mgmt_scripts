@@ -9,7 +9,7 @@ from argparse import ArgumentParser
 from numbers import Number
 from collections import defaultdict, Counter
 from itertools import groupby
-from more_itertools import chunked
+from more_itertools import chunked, partition
 from time import sleep
 
 from asnake.logging import setup_logging, get_logger
@@ -31,8 +31,8 @@ ap.add_argument('--skip_via_log',
                 default=False,
                 help='Filename of partial import logfile')
 
-enforce_integer = {'Object Record ID', 'Location', 'Container Profile'}
-enforce_string = {'Barcode', 'Container Indicator', 'Child Container Indicator'} # unused currently while testing openpyxl
+enforce_integer = {'Location', 'Container Profile'}
+enforce_string = {'Record URI', 'Barcode', 'Container Indicator', 'Child Container Indicator'} # unused currently while testing openpyxl
 def cell_value(cell, header):
     if isinstance(cell.value, datetime.datetime):
         return cell.value.date().isoformat()
@@ -114,16 +114,16 @@ Expected fields are:
 
 def validate_sub_container_row(sc_row):
     '''Checks if rows required for instance and sub_container creation are empty'''
-    required = ['TempContainerRecord', 'Object Record ID', 'Instance Type']
+    required = ['TempContainerRecord', 'Record URI', 'Instance Type']
     error_dict = defaultdict(list)
     for field in required:
         if not sc_row[field]:
             error_dict['temp_id'] = sc_row['TempContainerRecord']
-            error_dict['ao_id'] = sc_row['Object Record ID']
+            error_dict['record_uri'] = sc_row['Record URI']
             error_dict['empty_fields'].append(field)
     if sc_row['TempContainerRecord'] in failures:
         error_dict['temp_id'] = sc_row['TempContainerRecord']
-        error_dict['ao_id'] = sc_row['Object Record ID']
+        error_dict['record_uri'] = sc_row['Record URI']
         log.error('OMITTED validate_sub_container_row', **error_dict)
 
     elif len(error_dict):
@@ -136,7 +136,7 @@ def sub_container_row_to_instance(sc_row):
     """Takes a sub_container record and processes it into JSON ready to add to archival_object.
 
 Expected fields are:
-    Object Record ID
+
     Instance Type
     TempContainerRecord
     Child Container Type
@@ -163,8 +163,11 @@ def populate_skiplists(log_entries):
     for entry in log_entries:
         if entry['event'] in {'create_container', 'skip_container'}:
             temp_id2id[entry['temp_id']] = entry['id']
-        if entry['event'] in {'update_ao', 'skip_ao'}:
-            ao_processed.add(entry.get('ao_id', entry.get('id', None))) # id was used in in early versions of script
+        if entry['event'] in {'update_record', 'skip_record'}:
+            processed.add(entry.get('record_uri', entry.get('id', None))) # id was used in in early versions of script
+
+def ids_from_uris(uris):
+    return [int(uri.split('/')[-1]) for uri in uris]
 
 if __name__ == '__main__':
     args = ap.parse_args()
@@ -175,14 +178,14 @@ if __name__ == '__main__':
 
     # Global variables referenced from local functions
     temp_id2id = {}
-    ao_processed = set()
+    processed = set()
     failures = set()
 
     if args.skip_via_log:
         with open(expanduser(args.skip_via_log)) as f:
             populate_skiplists(map(json.loads, f))
 
-    ao_sheet, container_sheet = args.excel
+    record_sheet, container_sheet = args.excel
     # containers
     for c_row in dictify_sheet(container_sheet):
         temp_id = c_row['TempContainerRecord']
@@ -206,52 +209,65 @@ if __name__ == '__main__':
                 failures.add(temp_id)
 
     # sub_containers
-    sorting_fn=lambda x: x['Object Record ID']
+    sorting_fn=lambda x: x['Record URI']
 
-    if ao_processed:
-        for ao_id in ao_processed:
-            log.warning('skip_ao', ao_id=ao_id)
+    if processed:
+        for record_uri in processed:
+            log.warning('skip_record', record_uri=record_uri)
 
-    rows = filter(lambda row: row['Object Record ID'] not in ao_processed, dictify_sheet(ao_sheet))
 
-    groups_by_ao = {ao_id:list(group)
-                    for ao_id, group in groupby(sorted(rows, key=sorting_fn), key=sorting_fn)}
+    rows = filter(lambda row: row['Record URI'] not in processed, dictify_sheet(record_sheet))
 
-    for group in chunked(groups_by_ao.items(), 100):
-        ao_ids = [item[0] for item in group]
+    groups_by_record = {record_uri:list(group)
+                    for record_uri, group in groupby(sorted(rows, key=sorting_fn), key=sorting_fn)}
 
-        res = aspace.client.get(f"repositories/{args.repo_id}/archival_objects",
-                                params={"id_set":ao_ids})
-        if res.status_code != 200:
-            raise RuntimeError(f"Something went wrong with batch of IDs: {ao_ids}")
+    for group in chunked(groups_by_record.items(), 100):
+        ao_ids, resource_ids = map(ids_from_uris, partition(lambda uri: 'archival_object' not in uri, [item[0] for item in group]))
 
-        ao_jsons = {int(ao['uri'].split('/')[-1]):ao for ao in res.json()}
+        ao_jsons = []
+        resource_jsons = []
+        if len(ao_ids) > 0:
+            res_aos = aspace.client.get(f"repositories/{args.repo_id}/archival_objects",
+                                        params={"id_set":ao_ids})
+            if res_aos.status_code != 200:
+                raise RuntimeError(f"Something went wrong with batch of AO IDs: {ao_ids}")
+            ao_jsons = res_aos.json()
+        if len(resource_ids) > 0:
+            res_resources = aspace.client.get(f"repositories/{args.repo_id}/resources",
+                                              params={"id_set": resource_ids})
 
-        for ao_id, ao_group in group:
+            if res_resources.status_code != 200:
+                raise RuntimeError(f"Something went wrong with batch of Resource IDs: {resource_ids}")
+            resource_jsons = res_resources.json()
+
+        record_jsons = {record['uri']:record for record in ao_jsons + resource_jsons }
+
+        for record_uri, record_group in group:
             instances_added = []
-            ao_json = ao_jsons.get(ao_id, None)
-            if not ao_json:
-                log.error('FAILED missing_ao', result=None, ao_id=ao_id, ao_json=None)
+            record_json = record_jsons.get(record_uri, None)
+
+            if not record_json:
+                log.error('FAILED missing_record', result=None, record_uri=record_uri, record_json=None)
                 continue
-            del ao_json['position']
-            initial_instance_count = len(ao_json.get('instances', []))
-            for sc_row in ao_group:
+            if 'position' in record_json: del record_json['position']
+            initial_instance_count = len(record_json.get('instances', []))
+            for sc_row in record_group:
                 temp_id = sc_row['TempContainerRecord']
                 if not temp_id in temp_id2id:
-                    log.error('FAILED update_ao', result=f"'{temp_id}' not present in temp_id2id", ao=ao_json, ao_id=ao_id)
+                    log.error('FAILED update_record', result=f"'{temp_id}' not present in temp_id2id", record=record_json, record_id=record_uri)
                     continue
                 if validate_sub_container_row(sc_row):
-                    if not 'instances' in ao_json:
-                        ao_json['instances'] = []
-                    ao_json['instances'].append(sub_container_row_to_instance(sc_row))
+                    if not 'instances' in record_json:
+                        record_json['instances'] = []
+                    record_json['instances'].append(sub_container_row_to_instance(sc_row))
                     instances_added.append({'temp_id': temp_id, 'container_id': temp_id2id[temp_id]})
 
 
-            if len(ao_json.get('instances', [])) > initial_instance_count:
-                res = aspace.client.post(ao_json['uri'], json=ao_json)
+            if len(record_json.get('instances', [])) > initial_instance_count:
+                res = aspace.client.post(record_json['uri'], json=record_json)
             if res.status_code == 200:
-                log.info('update_ao', ao_id=ao_id, instances_added=instances_added)
+                log.info('update_record', record_uri=record_uri, instances_added=instances_added)
             else:
-                log.error('FAILED update_ao', result=res.json(), ao=ao_json, ao_id=ao_id)
+                log.error('FAILED update_record', result=res.json(), record=record_json, record_uri=record_uri)
 
     log.info('end_ingest')
