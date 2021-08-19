@@ -108,6 +108,28 @@ optional arguments:
 $ report_container_data.py houghton_import_1951-3100_2.log > hou_load_report-2020_03_28.txt
 ```
 
+## remove_urn_fetcher_jobs.py
+
+Deletes jobs with job_type "fetch_urn_job"
+
+### Usage
+
+``` text
+usage: remove_urn_fetcher_jobs.py [-h] [--logfile LOGFILE]
+
+Delete jobs of type "fetch_urn_job" from all repositories
+
+optional arguments:
+  -h, --help         show this help message and exit
+  --logfile LOGFILE  Filename for log output
+```
+
+### Example
+
+``` shellsession
+$ remove_urn_fetcher_jobs.py
+```
+
 ## Contributors
 
 * Dave Mayo: http://github.com/pobocks **(Primary Contact)**
