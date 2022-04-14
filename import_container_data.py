@@ -185,6 +185,8 @@ if __name__ == '__main__':
     ao_sheet, container_sheet = args.excel
     # containers
     for c_row in dictify_sheet(container_sheet):
+        if not 'TempContainerRecord' in c_row:
+            print(c_row.keys())
         temp_id = c_row['TempContainerRecord']
         if temp_id in temp_id2id:
             log.warning('skip_container', temp_id=temp_id, id=temp_id2id[temp_id])
@@ -252,6 +254,11 @@ if __name__ == '__main__':
             if res.status_code == 200:
                 log.info('update_ao', ao_id=ao_id, instances_added=instances_added)
             else:
-                log.error('FAILED update_ao', result=res.json(), ao=ao_json, ao_id=ao_id)
+                try:
+                    result = res.json()
+                except:
+                    result = res.content
+
+                log.error('FAILED update_ao', result=result, ao=ao_json, ao_id=ao_id)
 
     log.info('end_ingest')
